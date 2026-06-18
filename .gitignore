@@ -1,11 +1,30 @@
+# Dependencies
 node_modules/
+
+# Environment files (contain secrets!)
 .env
 .env.*
+!.env.example
+
+# Logs
 *.log
+logs/*
+
+# Build
 dist/
 build/
+
+# OS
 .DS_Store
+
+# Data files
 database/*.xlsx
 database/*.csv
 database/*.xls
 uploads/
+
+# Backups
+backups/
+
+# Docker volumes
+postgres-data/
