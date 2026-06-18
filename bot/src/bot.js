@@ -8,7 +8,7 @@ const bot = new Telegraf(config.BOT_TOKEN);
 // Обработка ошибок
 bot.catch((err, ctx) => {
   console.error(`Error for ${ctx.updateType}:`, err);
-  ctx.reply('❌ Произошла ошибка. Попробуйте позже.');
+  ctx.reply('❌ Произошла ошибка. Попробуйте позже.').catch(() => {});
 });
 
 // Логирование
@@ -22,15 +22,14 @@ bot.use(async (ctx, next) => {
 // Основные команды
 bot.start(userHandler.startCommand);
 bot.help(userHandler.helpCommand);
-bot.command('about', userHandler.aboutCommand);
-bot.command('contacts', userHandler.contactsCommand);
+bot.command('profile', userHandler.profileCommand);
+bot.command('feedback', userHandler.feedbackCommand);
 
 // Админские команды
 bot.command('admin', adminHandler.adminCommand);
 bot.command('stats', adminHandler.statsCallback);
-bot.command('broadcast', adminHandler.broadcastCallback);
 
-// Команда поиска пользователя
+// Поиск пользователя
 bot.command('find', async (ctx) => {
   if (!config.ADMIN_IDS.includes(ctx.from.id)) {
     return ctx.reply('⛔ Нет доступа');
@@ -52,34 +51,28 @@ bot.command('find', async (ctx) => {
   });
   
   try {
-    const result = await pool.query(
-      'SELECT * FROM users WHERE user_id = $1',
-      [userId]
-    );
+    const result = await pool.query('SELECT * FROM users WHERE user_id = $1', [userId]);
     
     if (result.rows.length === 0) {
       await ctx.reply(`❌ Пользователь с ID ${userId} не найден`);
     } else {
       const user = result.rows[0];
       const status = user.is_active ? '✅ Активен' : '❌ Неактивен';
-      const banned = user.is_banned ? '🚫 Заблокирован' : '✅ Не заблокирован';
       const username = user.username ? `@${user.username}` : '-';
       const date = new Date(user.created_at).toLocaleString('ru-RU');
       
       await ctx.reply(
-        `🔍 *Найден пользователь:*\n\n` +
+        `🔍 *Пользователь:*\n\n` +
         `• ID: \`${user.user_id}\`\n` +
         `• Username: ${username}\n` +
         `• Имя: ${user.first_name || '-'}\n` +
         `• Статус: ${status}\n` +
-        `• Блокировка: ${banned}\n` +
-        `• Источник: ${user.source || '-'}\n` +
         `• Добавлен: ${date}`,
         { parse_mode: 'Markdown' }
       );
     }
   } catch (err) {
-    console.error('Find user error:', err);
+    console.error('Find error:', err);
     await ctx.reply('❌ Ошибка поиска');
   }
 });
@@ -97,7 +90,7 @@ bot.action('admin_refresh', adminHandler.refreshCallback);
 bot.action('stats_daily', adminHandler.statsDailyCallback);
 bot.action('stats_export', adminHandler.usersExportCallback);
 
-// Пользователи
+// Пользователи (админ)
 bot.action('users_search', adminHandler.usersSearchCallback);
 bot.action('users_list', adminHandler.usersListCallback);
 bot.action('users_banned', adminHandler.usersBannedCallback);
@@ -113,12 +106,11 @@ bot.action('broadcast_stats', adminHandler.broadcastStatsCallback);
 bot.action('settings_refresh', adminHandler.settingsRefreshCallback);
 
 // Callback handlers для пользователя
-bot.action('user_help', userHandler.helpCallback);
-bot.action('user_about', userHandler.aboutCallback);
-bot.action('user_contacts', userHandler.contactsCallback);
-bot.action('user_back', userHandler.userBackCallback);
-bot.action('user_commands', userHandler.commandsCallback);
+bot.action('user_features', userHandler.featuresCallback);
 bot.action('user_faq', userHandler.faqCallback);
+bot.action('user_feedback', userHandler.feedbackCallback);
+bot.action('user_profile', userHandler.profileCallback);
+bot.action('user_back', userHandler.userBackCallback);
 
 // Обработка неизвестных callback
 bot.on('callback_query', async (ctx) => {
@@ -129,6 +121,10 @@ bot.on('callback_query', async (ctx) => {
 // Обработка текстовых сообщений
 bot.on('text', async (ctx) => {
   const isAdmin = config.ADMIN_IDS.includes(ctx.from.id);
+  
+  // Сначала проверяем обратную связь
+  const isFeedback = await userHandler.handleText(ctx);
+  if (isFeedback) return;
   
   if (isAdmin) {
     await ctx.reply(
@@ -153,7 +149,7 @@ bot.on('text', async (ctx) => {
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '❓ Помощь', callback_data: 'user_help' }]
+            [{ text: '📋 Главное меню', callback_data: 'user_back' }]
           ]
         }
       }
